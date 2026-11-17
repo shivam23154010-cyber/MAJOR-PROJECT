@@ -1,0 +1,102 @@
+services:
+  # =====================================================
+  # 1. POSTGRESQL (Relational Database)
+  # =====================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: verbrix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: verbrix
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d verbrix"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # =====================================================
+  # 2. MONGODB (Chat & Audit Logs)
+  # =====================================================
+  mongodb:
+    image: mongo:7
+    container_name: verbrix-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # =====================================================
+  # 3. BACKEND (Spring Boot 3 / Java 21)
+  # =====================================================
+  backend:
+    build:
+      context: 4. BACKEND SOURCE/verbrixbackend-main
+      dockerfile: Dockerfile
+    container_name: verbrix-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/verbrix
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_MONGODB_URI: mongodb://mongodb:27017/verbrix
+      SPRING_MONGODB_DATABASE: verbrix
+      VERBRIX_APP_JWTSECRET: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      CORS_ALLOWED_ORIGINS: http://localhost:4200,http://localhost:80,http://localhost
+      STORAGE_PROFILE_PICS: uploads/profile-pics
+      STORAGE_CERTIFICATES: uploads/certificates
+      STORAGE_VIDEOS: uploads/videos
+      STORAGE_IDS: uploads/ids
+      RESEND_API_KEY: mock-resend-key
+      RAZORPAY_KEY_ID: rzp_test_mockKeyId
+      RAZORPAY_KEY_SECRET: mockKeySecret
+      RAZORPAY_WEBHOOK_SECRET: mockWebhookSecret
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+      LIVEKIT_URL: ws://localhost:7880
+      CLOUDINARY_CLOUD_NAME: mock-cloud
+      CLOUDINARY_API_KEY: mock-key
+      CLOUDINARY_API_SECRET: mock-secret
+      APP_COOKIE_DOMAIN: localhost
+      APP_COOKIE_SECURE: "false"
+    volumes:
+      - backend_uploads:/app/uploads
+
+  # =====================================================
+  # 4. FRONTEND (Angular 21 Dev Server)
+  # =====================================================
+  frontend:
+    build:
+      context: 5. FRONTEND (WEB) SOURCE/verbrix-frontend-main
+      dockerfile: Dockerfile
+    container_name: verbrix-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "4200:4200"
+
+volumes:
+  postgres_data:
+  mongo_data:
+  backend_uploads:
